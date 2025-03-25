@@ -22,7 +22,7 @@
 - 避免 enum，改用 const MAP = { ... } as const
 
 ### ✅ 文件结构
-
+# 添加测试
 ```tsx
 // 1. 导出的主组件
 export function Component() { ... }
