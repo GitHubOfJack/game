@@ -1,0 +1,28 @@
+{
+  "name": "little-builder-adventure",
+  "version": "1.0.0",
+  "description": "一个为3岁儿童设计的3D益智教育游戏",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "education",
+    "children",
+    "game",
+    "3d",
+    "threejs"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "markdown-pdf": "^11.0.0",
+    "pdf-parse": "^1.1.1",
+    "three": "^0.159.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}

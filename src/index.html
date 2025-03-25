@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D狙击训练</title>
+  <link rel="stylesheet" href="bullet-effects.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    
+    #loading-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.8);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      color: white;
+    }
+    
+    #loading-progress {
+      width: 300px;
+      height: 20px;
+      background-color: #333;
+      margin-top: 20px;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    
+    #progress-bar {
+      height: 100%;
+      width: 0%;
+      background-color: #4CAF50;
+      transition: width 0.3s;
+    }
+    
+    #error-message {
+      color: red;
+      margin-top: 20px;
+      text-align: center;
+      max-width: 80%;
+      display: none;
+    }
+    
+    #reload-button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      display: none;
+    }
+    
+    .crosshair {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border: 2px solid red;
+      border-radius: 50%;
+      pointer-events: none;
+      transition: all 0.05s ease-out;
+      z-index: 1000;
+    }
+    
+    .center-dot {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 4px;
+      height: 4px;
+      background-color: rgba(255, 255, 255, 0.8);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 1000;
+    }
+    
+    .target-text {
+      position: absolute;
+      font-family: Arial, sans-serif;
+      font-size: 48px;
+      font-weight: bold;
+      color: #ffffff;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      user-select: none;
+    }
+    
+    .timer {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      font-family: Arial, sans-serif;
+      font-size: 24px;
+      font-weight: bold;
+      color: #ffffff;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 10px 20px;
+      border-radius: 10px;
+      z-index: 1000;
+    }
+    
+    .game-ui {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: white;
+      font-size: 18px;
+      z-index: 100;
+      text-shadow: 2px 2px 2px rgba(0, 0, 0, 0.5);
+    }
+    
+    .target-label {
+      position: absolute;
+      color: white;
+      font-size: 24px;
+      font-weight: bold;
+      text-align: center;
+      pointer-events: none;
+      user-select: none;
+      text-shadow: 1px 1px 2px black;
+      z-index: 110;
+    }
+    
+    .voice-prompt {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(255, 255, 255, 0.9);
+      padding: 20px 40px;
+      border-radius: 15px;
+      font-size: 24px;
+      font-weight: bold;
+      text-align: center;
+      z-index: 1000;
+      display: none;
+    }
+    
+    .voice-prompt.success {
+      color: #4CAF50;
+      border: 3px solid #4CAF50;
+    }
+    
+    .voice-prompt.error {
+      color: #F44336;
+      border: 3px solid #F44336;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading-screen">
+    <h2>正在加载游戏...</h2>
+    <div id="loading-progress">
+      <div id="progress-bar"></div>
+    </div>
+    <div id="error-message"></div>
+    <button id="reload-button" onclick="location.reload()">重新加载</button>
+  </div>
+  
+  <div class="crosshair"></div>
+  <div class="center-dot"></div>
+  <div class="timer">05:00</div>
+  <div class="muzzle-flash"></div>
+  <div class="game-ui">
+    <div>得分: <span id="score">0</span></div>
+    <div>目标: <span id="target">1</span></div>
+  </div>
+  
+  <div id="message" class="voice-prompt"></div>
+
+  <script src="bullet-effects.js"></script>
+  <script src="speech.js"></script>
+  <script>
+    // 显示加载错误
+    function showLoadingError(message) {
+      document.getElementById('error-message').textContent = message;
+      document.getElementById('error-message').style.display = 'block';
+      document.getElementById('reload-button').style.display = 'block';
+    }
+    
+    // 更新加载进度
+    function updateLoadingProgress(percent) {
+      document.getElementById('progress-bar').style.width = percent + '%';
+    }
+    
+    // 显示消息
+    function showMessage(text, type) {
+      const message = document.getElementById('message');
+      message.textContent = text;
+      message.className = 'voice-prompt ' + type;
+      message.style.display = 'block';
+      
+      setTimeout(() => {
+        message.style.display = 'none';
+      }, 2000);
+    }
+    
+    // 加载Three.js
+    updateLoadingProgress(20);
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js';
+    script.onload = () => {
+      updateLoadingProgress(80);
+      initGame();
+    };
+    script.onerror = () => showLoadingError('无法加载Three.js库，请检查网络连接');
+    document.head.appendChild(script);
+    
+    // 游戏状态
+    let gameState = {
+      score: 0,
+      targets: [],
+      currentTarget: null,
+      isShooting: false,
+      targetLabels: []
+    };
+    
+    // Three.js变量
+    let scene, camera, renderer;
+    let sniper, sniperModel;
+    let targets = [];
+    
+    // 初始化游戏时隐藏原生鼠标
+    document.body.style.cursor = 'none';
+    
+    let gameTimer;
+    let gameTimeLeft = 5 * 60; // 5分钟，以秒为单位
+    
+    function updateTimer() {
+      const minutes = Math.floor(gameTimeLeft / 60);
+      const seconds = gameTimeLeft % 60;
+      const timerDisplay = document.querySelector('.timer');
+      timerDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      
+      if (gameTimeLeft <= 0) {
+        endGame();
+      } else {
+        gameTimeLeft--;
+      }
+    }
+    
+    function startGame() {
+      // 初始化游戏计时器
+      gameTimer = setInterval(updateTimer, 1000);
+      
+      // 其他游戏初始化代码...
+    }
+    
+    function endGame() {
+      clearInterval(gameTimer);
+      
+      // 停止所有游戏相关的动画和更新
+      cancelAnimationFrame(animationFrameId);
+      
+      // 显示游戏结束界面
+      const gameOverScreen = document.createElement('div');
+      gameOverScreen.style.position = 'fixed';
+      gameOverScreen.style.top = '50%';
+      gameOverScreen.style.left = '50%';
+      gameOverScreen.style.transform = 'translate(-50%, -50%)';
+      gameOverScreen.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+      gameOverScreen.style.padding = '20px';
+      gameOverScreen.style.borderRadius = '10px';
+      gameOverScreen.style.color = 'white';
+      gameOverScreen.style.fontSize = '24px';
+      gameOverScreen.style.textAlign = 'center';
+      gameOverScreen.style.zIndex = '2000';
+      
+      const finalScore = document.querySelector('.score').textContent;
+      gameOverScreen.innerHTML = `
+        <h2>游戏结束！</h2>
+        <p>您的最终得分：${finalScore}</p>
+        <button onclick="location.reload()" style="
+          padding: 10px 20px;
+          font-size: 18px;
+          background-color: #4CAF50;
+          color: white;
+          border: none;
+          border-radius: 5px;
+          cursor: pointer;
+          margin-top: 20px;
+        ">重新开始</button>
+      `;
+      
+      document.body.appendChild(gameOverScreen);
+      
+      // 播放游戏结束语音
+      if (typeof playGameOverVoice === 'function') {
+        playGameOverVoice();
+      }
+    }
+    
+    // 初始化游戏
+    function initGame() {
+      try {
+        // 创建场景
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        
+        // 创建相机
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 1.7, 5);
+        
+        // 创建渲染器
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+        
+        // 添加灯光
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(5, 10, 7);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+        
+        // 创建地面
+        const groundGeometry = new THREE.PlaneGeometry(100, 100);
+        const groundMaterial = new THREE.MeshStandardMaterial({ 
+          color: 0x669933,
+          roughness: 0.8
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -0.5;
+        ground.receiveShadow = true;
+        scene.add(ground);
+        
+        // 创建天空盒
+        const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
+        const skyMaterial = new THREE.MeshBasicMaterial({
+          color: 0x87CEEB,
+          side: THREE.BackSide
+        });
+        const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+        scene.add(sky);
+        
+        // 添加云朵
+        for (let i = 0; i < 10; i++) {
+          createCloud(
+            Math.random() * 100 - 50,
+            Math.random() * 30 + 10,
+            Math.random() * 100 - 50,
+            Math.random() * 3 + 2
+          );
+        }
+        
+        // 创建狙击手和狙击枪
+        createSniper();
+        
+        // 生成目标
+        for (let i = 0; i < 5; i++) {
+          createTarget();
+        }
+        
+        // 设置当前目标
+        setCurrentTarget();
+        
+        // 添加事件监听
+        window.addEventListener('resize', onWindowResize);
+        window.addEventListener('click', onMouseClick);
+        window.addEventListener('mousemove', onMouseMove);
+        
+        // 隐藏加载屏幕
+        updateLoadingProgress(100);
+        setTimeout(() => {
+          document.getElementById('loading-screen').style.display = 'none';
+        }, 500);
+        
+        // 开始动画循环
+        animate();
+      } catch (error) {
+        showLoadingError('初始化游戏失败: ' + error.message);
+        console.error(error);
+      }
+    }
+    
+    // 创建云朵
+    function createCloud(x, y, z, scale) {
+      const cloudGroup = new THREE.Group();
+      
+      const cloudMaterial = new THREE.MeshBasicMaterial({
+        color: 0xFFFFFF,
+        transparent: true,
+        opacity: 0.8
+      });
+      
+      // 创建几个球体组成云朵
+      const positions = [
+        { x: 0, y: 0, z: 0, radius: 1 },
+        { x: 1, y: 0.2, z: 0, radius: 0.8 },
+        { x: -1, y: -0.1, z: 0, radius: 0.7 },
+        { x: 0, y: 0.5, z: 0.5, radius: 0.7 },
+        { x: 0.5, y: -0.3, z: -0.5, radius: 0.6 }
+      ];
+      
+      for (const pos of positions) {
+        const cloudPartGeometry = new THREE.SphereGeometry(pos.radius, 8, 8);
+        const cloudPart = new THREE.Mesh(cloudPartGeometry, cloudMaterial);
+        cloudPart.position.set(pos.x, pos.y, pos.z);
+        cloudGroup.add(cloudPart);
+      }
+      
+      cloudGroup.position.set(x, y, z);
+      cloudGroup.scale.set(scale, scale, scale);
+      
+      scene.add(cloudGroup);
+      
+      // 添加漂移动画数据
+      cloudGroup.userData.drift = {
+        speed: Math.random() * 0.02 + 0.01,
+        direction: new THREE.Vector3(Math.random() * 2 - 1, 0, Math.random() * 2 - 1).normalize()
+      };
+      
+      return cloudGroup;
+    }
+    
+    // 创建狙击手和狙击枪
+    function createSniper() {
+      // 创建狙击手组
+      sniper = new THREE.Group();
+      
+      // 创建小人体
+      // 头部
+      const headGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+      const headMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xFFD8C0, // 肤色
+        roughness: 0.7 
+      });
+      const head = new THREE.Mesh(headGeometry, headMaterial);
+      head.position.set(0, 0.2, 0);
+      head.castShadow = true;
+      sniper.add(head);
+      
+      // 帽子
+      const hatGeometry = new THREE.CylinderGeometry(0.2, 0.22, 0.1, 16);
+      const hatMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x333333, // 黑色
+        roughness: 0.8 
+      });
+      const hat = new THREE.Mesh(hatGeometry, hatMaterial);
+      hat.position.set(0, 0.35, 0);
+      hat.castShadow = true;
+      sniper.add(hat);
+      
+      // 身体
+      const bodyGeometry = new THREE.CylinderGeometry(0.15, 0.2, 0.5, 16);
+      const bodyMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x2D572C, // 军绿色
+        roughness: 0.8 
+      });
+      const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+      body.position.set(0, -0.15, 0);
+      body.castShadow = true;
+      sniper.add(body);
+      
+      // 创建狙击步枪组
+      sniperModel = new THREE.Group();
+      
+      // 枪管
+      const barrelGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.8, 8);
+      const barrelMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.5,
+        metalness: 0.7
+      });
+      const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+      barrel.rotation.z = Math.PI / 2;
+      barrel.position.set(0.4, 0.05, 0);
+      barrel.castShadow = true;
+      sniperModel.add(barrel);
+      
+      // 枪托
+      const stockGeometry = new THREE.BoxGeometry(0.4, 0.08, 0.05);
+      const stockMaterial = new THREE.MeshStandardMaterial({
+        color: 0x8B4513, // 棕色
+        roughness: 0.8
+      });
+      const stock = new THREE.Mesh(stockGeometry, stockMaterial);
+      stock.position.set(0.05, 0, 0);
+      stock.castShadow = true;
+      sniperModel.add(stock);
+      
+      // 瞄准镜
+      const scopeGeometry = new THREE.CylinderGeometry(0.04, 0.04, 0.12, 8);
+      const scopeMaterial = new THREE.MeshStandardMaterial({
+        color: 0x111111,
+        roughness: 0.3,
+        metalness: 0.8
+      });
+      const scope = new THREE.Mesh(scopeGeometry, scopeMaterial);
+      scope.position.set(0.3, 0.1, 0);
+      scope.rotation.z = Math.PI / 2;
+      scope.castShadow = true;
+      sniperModel.add(scope);
+      
+      // 放置狙击枪在小人前面
+      sniperModel.position.set(0.4, 0, 0.3);
+      sniperModel.rotation.y = Math.PI;
+      sniper.add(sniperModel);
+      
+      // 将狙击手添加到摄像机前方
+      sniper.position.set(0, -1, -1.5);
+      camera.add(sniper);
+      scene.add(camera);
+    }
+    
+    // 创建HTML标签显示目标文字
+    function createTargetLabel(value, isNumber) {
+      const label = document.createElement('div');
+      label.className = 'target-label';
+      label.textContent = value;
+      label.style.display = 'none';  // 初始隐藏，等位置计算后再显示
+      document.body.appendChild(label);
+      return label;
+    }
+    
+    // 更新标签位置
+    function updateLabelPosition(label, position) {
+      if (!label) return;
+      
+      // 将3D坐标转换为屏幕坐标
+      const vector = position.clone();
+      vector.project(camera);
+      
+      const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (-(vector.y * 0.5) + 0.5) * window.innerHeight;
+      
+      // 设置标签位置
+      label.style.left = x + 'px';
+      label.style.top = y + 'px';
+      
+      // 如果在视野内，则显示
+      if (vector.z < 1) {
+        label.style.display = 'block';
+      } else {
+        label.style.display = 'none';
+      }
+    }
+    
+    // 创建目标
+    function createTarget() {
+      try {
+        // 随机位置
+        const x = Math.random() * 40 - 20;
+        const y = Math.random() * 5 + 1;
+        const z = Math.random() * -20 - 10;
+        
+        // 随机决定是数字还是字母
+        const isNumber = Math.random() > 0.5;
+        let value;
+        
+        if (isNumber) {
+          value = Math.floor(Math.random() * 9) + 1;
+        } else {
+          const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+          value = letters[Math.floor(Math.random() * letters.length)];
+        }
+        
+        // 创建目标组
+        const targetGroup = new THREE.Group();
+        
+        // 创建气泡外壳
+        const bubbleGeometry = new THREE.SphereGeometry(0.8, 32, 32);
+        const bubbleMaterial = new THREE.MeshStandardMaterial({
+          color: isNumber ? 0x4CAF50 : 0x2196F3, // 数字绿色，字母蓝色
+          transparent: true,
+          opacity: 0.8,
+          roughness: 0.2,
+          metalness: 0.1
+        });
+        const bubble = new THREE.Mesh(bubbleGeometry, bubbleMaterial);
+        bubble.castShadow = true;
+        targetGroup.add(bubble);
+        
+        // 创建HTML标签代替3D文字
+        const label = createTargetLabel(value, isNumber);
+        
+        // 设置目标位置
+        targetGroup.position.set(x, y, z);
+        
+        // 存储目标数据
+        targetGroup.userData = {
+          value: value,
+          type: isNumber ? 'number' : 'letter',
+          isCurrentTarget: false,
+          velocity: new THREE.Vector3(
+            (Math.random() - 0.5) * 0.03,
+            (Math.random() - 0.5) * 0.03,
+            (Math.random() - 0.5) * 0.03
+          ),
+          label: label
+        };
+        
+        // 添加到场景和数组
+        scene.add(targetGroup);
+        targets.push(targetGroup);
+        
+        return targetGroup;
+      } catch (error) {
+        console.error('创建目标失败:', error);
+        return null;
+      }
+    }
+    
+    // 设置当前目标
+    function setCurrentTarget() {
+      if (targets.length === 0) return;
+      
+      // 重置当前目标
+      targets.forEach(target => {
+        if (target.userData.isCurrentTarget) {
+          target.children[0].material.emissive = new THREE.Color(0x000000);
+          target.children[0].material.emissiveIntensity = 0;
+          target.userData.isCurrentTarget = false;
+        }
+      });
+      
+      // 随机选择新目标
+      const index = Math.floor(Math.random() * targets.length);
+      const target = targets[index];
+      
+      // 设置为当前目标
+      target.children[0].material.emissive = new THREE.Color(0xFFFF00);
+      target.children[0].material.emissiveIntensity = 0.5;
+      target.userData.isCurrentTarget = true;
+      gameState.currentTarget = target.userData.value;
+      
+      // 更新UI
+      document.getElementById('target').textContent = target.userData.value;
+      
+      // 语音播报当前目标
+      if (typeof announceTarget === 'function') {
+        setTimeout(() => {
+          announceTarget(target.userData.value);
+        }, 500); // 等待一下再播报，让游戏先加载完
+      }
+    }
+    
+    // 窗口调整大小
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    
+    // 鼠标移动
+    function onMouseMove(event) {
+      // 更新准星位置跟随鼠标
+      const crosshair = document.querySelector('.crosshair');
+      crosshair.style.left = event.clientX + 'px';
+      crosshair.style.top = event.clientY + 'px';
+      
+      // 计算鼠标在标准化设备坐标中的位置 (-1 到 +1)
+      const mouse = {
+        x: (event.clientX / window.innerWidth) * 2 - 1,
+        y: -(event.clientY / window.innerHeight) * 2 + 1
+      };
+      
+      // 计算鼠标与屏幕中心的偏移
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      const offsetX = (event.clientX - centerX) / centerX; // 标准化偏移 (-1 到 1)
+      const offsetY = (event.clientY - centerY) / centerY; // 标准化偏移 (-1 到 1)
+      
+      // 限制相机旋转范围
+      // 水平旋转限制 (-0.5 到 0.5 弧度，约 ±30 度)
+      const maxHorizontalRotation = 0.5; 
+      const horizontalRotation = Math.max(-maxHorizontalRotation, 
+                                         Math.min(maxHorizontalRotation, -offsetX * 0.5));
+      
+      // 垂直旋转限制 (-0.3 到 0.3 弧度，约 ±17 度)
+      const maxVerticalRotation = 0.3;
+      const verticalRotation = Math.max(-maxVerticalRotation, 
+                                       Math.min(maxVerticalRotation, offsetY * 0.3));
+      
+      // 平滑过渡
+      const currentHorizontal = camera.rotation.y;
+      const currentVertical = camera.rotation.x;
+      
+      // 应用缓动效果
+      camera.rotation.y += (horizontalRotation - currentHorizontal) * 0.1;
+      camera.rotation.x += (verticalRotation - currentVertical) * 0.1;
+      
+      // 调整狙击枪随鼠标移动
+      if (sniperModel) {
+        sniperModel.rotation.z = -camera.rotation.x * 0.7;
+      }
+    }
+    
+    // 鼠标点击
+    function onMouseClick(event) {
+      if (gameState.isShooting) return;
+      gameState.isShooting = true;
+      
+      // 显示枪口闪光
+      showMuzzleFlash();
+      
+      // 简单的后坐力动画
+      if (sniperModel) {
+        const originalZ = sniperModel.position.z;
+        sniperModel.position.z += 0.1;
+        setTimeout(() => {
+          sniperModel.position.z = originalZ;
+        }, 150);
+      }
+      
+      // 播放射击音效
+      playShootSound();
+      
+      // 根据鼠标位置计算射线方向
+      const mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+      const mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+      
+      // 创建射线
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(new THREE.Vector2(mouseX, mouseY), camera);
+      
+      // 创建子弹轨迹起点（鼠标位置）
+      const mousePosition = {
+        x: event.clientX,
+        y: event.clientY
+      };
+      
+      // 检测碰撞
+      const intersects = raycaster.intersectObjects(scene.children, true);
+      
+      let hitTarget = false;
+      
+      if (intersects.length > 0) {
+        const hitPoint = intersects[0].point;
+        
+        // 将3D坐标转换为屏幕坐标
+        const screenPosition = hitPoint.clone().project(camera);
+        const endX = (screenPosition.x * 0.5 + 0.5) * window.innerWidth;
+        const endY = (-(screenPosition.y * 0.5) + 0.5) * window.innerHeight;
+        
+        // 创建子弹轨迹
+        createBulletTrail(mousePosition.x, mousePosition.y, endX, endY);
+        
+        // 创建弹痕
+        createImpactMark(endX, endY);
+        
+        const object = intersects[0].object;
+        
+        // 查找目标组
+        for (const target of targets) {
+          if (target.children.includes(object)) {
+            hitTarget = true;
+            
+            // 检查是否是当前目标
+            if (target.userData.isCurrentTarget) {
+              // 命中正确目标
+              gameState.score += 10;
+              document.getElementById('score').textContent = gameState.score;
+              showMessage('很棒！', 'success');
+              
+              // 播放成功的语音反馈
+              if (typeof playSuccessVoice === 'function') {
+                playSuccessVoice();
+              }
+              
+              // 移除标签
+              if (target.userData.label) {
+                document.body.removeChild(target.userData.label);
+              }
+              
+              // 从场景中移除目标
+              scene.remove(target);
+              
+              // 从数组中移除
+              const index = targets.indexOf(target);
+              if (index !== -1) {
+                targets.splice(index, 1);
+              }
+              
+              // 创建新目标
+              createTarget();
+              
+              // 设置新的当前目标
+              setCurrentTarget();
+            } else {
+              // 命中错误目标
+              showMessage('再试一次', 'error');
+              
+              // 播放失败的语音反馈
+              if (typeof playFailureVoice === 'function') {
+                playFailureVoice();
+              }
+              
+              // 移除标签
+              if (target.userData.label) {
+                document.body.removeChild(target.userData.label);
+              }
+              
+              scene.remove(target);
+              
+              const index = targets.indexOf(target);
+              if (index !== -1) {
+                targets.splice(index, 1);
+              }
+              
+              createTarget();
+            }
+            
+            break;
+          }
+        }
+      } else {
+        // 未击中任何物体，创建一个延伸到远处的轨迹
+        const farPoint = raycaster.ray.direction.clone().multiplyScalar(1000).add(camera.position);
+        const screenPositionFar = farPoint.clone().project(camera);
+        const endX = (screenPositionFar.x * 0.5 + 0.5) * window.innerWidth;
+        const endY = (-(screenPositionFar.y * 0.5) + 0.5) * window.innerHeight;
+        
+        // 创建子弹轨迹到远处
+        createBulletTrail(mousePosition.x, mousePosition.y, endX, endY);
+      }
+      
+      if (!hitTarget) {
+        showMessage('瞄准再射击', 'error');
+        
+        // 播放失败的语音反馈
+        if (typeof playFailureVoice === 'function') {
+          setTimeout(() => {
+            playFailureVoice();
+          }, 300);
+        }
+      }
+      
+      // 延迟重置射击状态
+      setTimeout(() => {
+        gameState.isShooting = false;
+      }, 500);
+    }
+    
+    // 播放射击音效
+    function playShootSound() {
+      try {
+        // 创建音频上下文
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+        
+        // 创建振荡器
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        // 设置音量包络
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        
+        // 连接节点
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        // 设置频率包络（模拟射击声）
+        oscillator.frequency.setValueAtTime(250, audioCtx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.3);
+        
+        // 设置类型
+        oscillator.type = 'sawtooth';
+        
+        // 启动并停止
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.3);
+      } catch (error) {
+        console.error('无法播放音效:', error);
+      }
+    }
+    
+    // 更新目标位置和标签位置
+    function updateTargets() {
+      targets.forEach(target => {
+        // 更新位置
+        target.position.add(target.userData.velocity);
+        
+        // 更新标签位置
+        if (target.userData.label) {
+          updateLabelPosition(target.userData.label, target.position);
+        }
+        
+        // 边界检查
+        if (target.position.x < -30 || target.position.x > 30) {
+          target.userData.velocity.x *= -1;
+        }
+        
+        if (target.position.y < 1 || target.position.y > 10) {
+          target.userData.velocity.y *= -1;
+        }
+        
+        if (target.position.z < -40 || target.position.z > -5) {
+          target.userData.velocity.z *= -1;
+        }
+        
+        // 当前目标脉动效果
+        if (target.userData.isCurrentTarget) {
+          const scale = 1 + Math.sin(Date.now() * 0.003) * 0.1;
+          target.scale.set(scale, scale, scale);
+        }
+      });
+      
+      // 更新云朵位置
+      scene.children.forEach(child => {
+        if (child.userData.drift) {
+          child.position.x += child.userData.drift.direction.x * child.userData.drift.speed;
+          child.position.z += child.userData.drift.direction.z * child.userData.drift.speed;
+          
+          // 如果云飘出范围，将其移到另一侧
+          if (child.position.x > 100) child.position.x = -100;
+          if (child.position.x < -100) child.position.x = 100;
+          if (child.position.z > 100) child.position.z = -100;
+          if (child.position.z < -100) child.position.z = 100;
+        }
+      });
+    }
+    
+    // 动画循环
+    function animate() {
+      requestAnimationFrame(animate);
+      
+      try {
+        // 更新目标和标签
+        updateTargets();
+        
+        // 渲染场景
+        renderer.render(scene, camera);
+      } catch (error) {
+        console.error('渲染错误:', error);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+name: 构建和部署
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v2
+        
+      - name: 设置Node.js环境
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+          
+      - name: 安装依赖
+        run: npm ci
+        
+      - name: 构建项目
+        run: npm run build
+        
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v2
+        with:
+          name: build-files
+          path: dist
+          
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: 下载构建产物
+        uses: actions/download-artifact@v2
+        with:
+          name: build-files
+          path: dist
+          
+      - name: 部署到GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@4.1.4
+        with:
+          branch: gh-pages
+          folder: dist 
